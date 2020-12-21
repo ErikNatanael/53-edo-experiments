@@ -110,6 +110,27 @@ chordFreqs.do { |fr|
 )
 ~launchChordRandomOrder.(2, 4)
 
+//
+( var lastNote = 0, chordFreqs;
+~chord = 12.collect{|i| var newNote;
+	if(i == 0, {
+		newNote = lastNote;
+	}, {
+		newNote = lastNote + switch(i%3,
+			1, {17},
+			2, {14},
+			0, {14},
+		);
+	});
+	lastNote = newNote;
+	newNote
+};
+("chord: " + ~chord).postln;
+chordFreqs = ~chord.collect{|degree| ~degree53_to_freq.value(degree + (53*4), ~rootFreq) };
+("chord freqs:" + chordFreqs).postln;
+~launchChord.(3, 4);
+)
+
 // m6 chord
 ( var lastNote = 0, chordFreqs;
 ~chord = 24.collect{|i| var newNote;
@@ -325,3 +346,10 @@ chordFreqs.do { |fr|
 ~launchChord.(3, 4);
 )
 ~launchChordRandomOrder.(2, 4)
+
+~chord = [0, 17, 31, 43, 57, 74, 88, 106, 120, 137, 151, 163];
+~launchChord.(3, 4);
+
+120 + 36 + 14
+
+163-106

@@ -1,32 +1,10 @@
-//// 53-EDO input using a nanoPAD 2
-
-MIDIClient.init;
-MIDIIn.connectAll;
-
-// Check the keys
-( var notes, on, off;
-notes = Array.newClear(128);
-
-on = MIDIFunc.noteOn({ |veloc, num, chan, src|
-	("on" + num + veloc).postln;
-    notes[num] = Synth(\default, [\freq, num.midicps,
-        \amp, veloc * 0.00315]);
-});
-
-off = MIDIFunc.noteOff({ |veloc, num, chan, src|
-	("on" + num + veloc).postln;
-    notes[num].release;
-});
-c = MIDIFunc.cc({|val, num, chan, src| [val, num, chan].postln}, 1); // match cc 1-10
-
-)
 
 // SOUND SETUP
 
 (
 
 // load synthdefs from file
-"nanoPad_synthdefs.scd".loadRelative;
+"synthdefs.scd".loadRelative;
 
 SynthDef(\feedback_delay, { | inBus, outBus = 0, delaytime = 0.2, feedback = 0.3, mix = 0.3|
 	var in, src, sig, feed;
@@ -148,13 +126,13 @@ SynthDef(\feedback_delay, { | inBus, outBus = 0, delaytime = 0.2, feedback = 0.3
 	~octaves = Dictionary[];
 	5.do{|i| ~octaves.put(i, false); };
 	~note = 0;
+	~lastNote = 0;
 	// map midiNotes to indexes in the bit array
 	~bit_lookup = Dictionary.with(*[\50->0,\48->1,\46->2, \44->3, \42->4]);
 	// ~octave_lookup = Dictionary.with(*[\21->1, \23->2, \24->3, \26->4, \28->5]);
 	~octave_lookup = Dictionary.with(*[\37->2, \39->3, \41->4]);
-	~added_notes_buttons = [40, 38, 36];
-	~added_notes_values = [31, 9, 17];
-	~added_notes_on = false!3;
+	~added_notes_values = [31, 9, 17, 5];
+	~added_notes_on = false!4;
 	~added_notes_value = 0; // the combined value of all the ~added_notes_lookup button that are pressed down
 	~fifth_midinote = 40;
 	~fifth_on = false;
@@ -192,35 +170,34 @@ SynthDef(\feedback_delay, { | inBus, outBus = 0, delaytime = 0.2, feedback = 0.3
 		result
 	};
 
-	~playNote = { | degree | var freq;
-		freq = ~degree53_to_freq.(degree + (53*~octave));
-		if(freq > 30.0
-			&& (freq < 10000)) {
-			if(~sustain, {
-				~sustained_synths.add(~startSynth.(freq));
-			}, {
-				~synth.size.do{|i|
-					if(~octaves.at(i) == false, {
-						~synth[i].release;
-					}, {
-						~synth[i].release;
-						~synth[i] = ~startSynth.(freq);
-					});
-				};
-			});
-		};
+	~playNote = { var freq, degree = ~note;
+		if(~sustain, {
+			~sustained_synths.add(~startSynth.(freq));
+		}, {
+			~synth.size.do{|i|
+				if(~octaves.at(i) == false, {
+					~synth[i].release;
+				}, {
+					~synth[i].release;
+					~synth[i] = ~startSynth.(~degree53_to_freq.(degree + (53*(i+2))););
+				});
+			};
+		});
 		{~guiView.refresh; }.defer;
 	};
-	~updateNote = { | degree |
-		~synth.do {|syn, i|
-			var freq;
-			if(~octaves.at(i) == true) {
-				freq = ~degree53_to_freq.(degree + (53*i));
-				~synth[i].set(\freq, freq);
-				~synth[i].set(\pressure, ~pressure);
-				//~sustained_synths[~sustained_synths.size-1].set(\freq, freq);
-				{~guiView.refresh; }.defer;
+	~updateNote = { var degree = ~note;
+		if(degree != ~lastNote) {
+			~synth.do {|syn, i|
+				var freq;
+				if(~octaves.at(i) == true) {
+					freq = ~degree53_to_freq.(degree + (53*(i+2)));
+					~synth[i].set(\freq, freq);
+					~synth[i].set(\pressure, ~pressure);
+					//~sustained_synths[~sustained_synths.size-1].set(\freq, freq);
+					{~guiView.refresh; }.defer;
+				};
 			};
+			~lastNote = ~note;
 		};
 	};
 	~releaseNote = { | octave |
@@ -259,128 +236,118 @@ SynthDef(\feedback_delay, { | inBus, outBus = 0, delaytime = 0.2, feedback = 0.3
 	};
 	~initWavetables.();
 
-	MIDIFunc.cc({|val, num, chan, src|
-		~pressure = val/127;
-		~updateNote.(~note);
-
-	}, 1);
-
-	MIDIdef.noteOn(\test4, {arg ...args;
-		var note = args[1],
-		amp = args[0].linexp(0, 127, 0.001, 1.0),
-		degree, bit, add, newSynth;
-
-		bit = ~octave_lookup.at(note.asSymbol);
-		if(bit != nil) {
-			~octave = bit;
-			~octaves.put(bit, true);
-			~playNote.(~note);
-		};
-
-		bit = ~bit_lookup.at(note.asSymbol);
-		("bit: " + bit).postln;
-		if(bit != nil) {
-			~bits[bit] = true;
-			degree = ~calculateBinaryNumber.();
-			~note = degree;
-
-			("degree: " + (degree) + " mod53: " + (degree%53)).postln;
-			if(~changeNoteEveryChange) {
-				~updateNote.(~note);
-			};
-		};
-
-		~added_notes_buttons.do{|button, i|
-			if(button == note) {
-				// Set button to on
-				~added_notes_on[i] = true;
-				// Update pitch
-				degree = ~calculateBinaryNumber.();
-				~note = degree;
-				if(~changeNoteEveryChange) {
-					~updateNote.(~note);
-				};
-			}
-		};
-
-
-		if(note == ~sustain_midinote) {
-			~sustain = true;
-		};
-
-		// Check if synth should be changed
-		newSynth = ~synthLookup.at(note.asSymbol);
-		if(newSynth!=nil) {
-			~startSynth = newSynth;
-		};
-
-		// Toggle drone
-		if(note == ~drone_button) {
-			if(~drone_on, {
-				~drone_synths.do{|syn| syn.release; };
-				~drone_on = false;
-			}, {
-				~start_drones.();
-				~drone_on = true;
-			});
-		};
-		// args.postln;
-
-
-	}); // match any noteOn
-	MIDIdef.noteOff(\test_off, {arg ...args;
-		var note = args[1], degree, bit, add;
-		bit = ~bit_lookup.at(note.asSymbol);
-		if(bit != nil) {
-			~bits[bit] = false;
-			~note = ~calculateBinaryNumber.();
-			if(~changeNoteEveryChange) {
-				~updateNote.(~note);
-			};
-		};
-
-		bit = ~octave_lookup.at(note.asSymbol);
-		if(bit != nil) {
-			~octave = 0;
-			~octaves.put(bit, false);
-			~releaseNote.(bit);
-		};
-		~added_notes_buttons.do{|button, i|
-			if(button == note) {
-				// Set button to off
-				~added_notes_on[i] = false;
-				// Update pitch
-				degree = ~calculateBinaryNumber.();
-				~note = degree;
-				if(~changeNoteEveryChange) {
-					~updateNote.(~note);
-				};
-			}
-		};
-		if(note == ~sustain_midinote) {
-			~sustain = false;
-			~sustained_synths.do{ |syn| syn.release; };
-			~sustained_synths = List[];
-		};
-		args.postln;
-	}); // match any noteOn
-	// sustain pedal
-	MIDIdef.cc(\sustainPedal, {arg ...args;
-		var vel = args[0];
-		if(vel == 0) {
-			~sustain = false;
-		};
-		if(vel == 127) {
-			~sustain = true;
-		};
-		args.postln
-
-	}, 64); // match cc 1-10
 
 	// load GUI
-	"nanoPad_53-edo_5th_octaves_gui.scd".loadRelative;
+	"gui.scd".loadRelative;
 }.fork;
 )
 
-~octaves
-~start_drones.()
+// Get input from serial
+( var port,
+thresh = 100, on_actions, off_actions, octave_on_action, octave_off_action;
+~ofAddr = NetAddr("127.0.0.1", 12000);
+
+// 0: fifth
+// 1: extra 1
+// 8: extra 2
+// 7: extra 3
+
+// 4: bit 0
+// 5: bit 1
+// 6: bit 2
+// 2: bit 3
+// 3: bit 4
+
+// 9: octave 1
+// 11: octave 2
+// 10: octave 3
+
+octave_on_action = { | octave |
+	var val = ~octaves.at(octave);
+	if(val == false) {
+		~octaves.put(octave, true);
+		~playNote.();
+	};
+};
+
+octave_off_action = { | octave |
+	var val = ~octaves.at(octave);
+	if(val == true) {
+		~octaves.put(octave, false);
+		~playNote.();
+	};
+};
+
+on_actions = Dictionary.with(*[
+	\0 -> { ~added_notes_on[0] = true; },
+	\1 -> { ~added_notes_on[1] = true; },
+	\8 -> { ~added_notes_on[2] = true; },
+	\7 -> { ~added_notes_on[3] = true; },
+
+	\4 -> { ~bits[0] = true },
+	\5 -> { ~bits[1] = true },
+	\6 -> { ~bits[2] = true },
+	\2 -> { ~bits[3] = true },
+	\3 -> { ~bits[4] = true },
+
+	\9 -> { octave_on_action.(0) },
+	\11 -> { octave_on_action.(1) },
+	\10 -> { octave_on_action.(2) },
+]);
+
+off_actions = Dictionary.with(*[
+	\0-> { ~added_notes_on[0] = false; },
+	\1 -> { ~added_notes_on[1] = false; },
+	\8 -> { ~added_notes_on[2] = false; },
+	\7 -> { ~added_notes_on[3] = false; },
+
+	\4 -> { ~bits[0] = false },
+	\5 -> { ~bits[1] = false },
+	\6 -> { ~bits[2] = false },
+	\2 -> { ~bits[3] = false },
+	\3 -> { ~bits[4] = false },
+
+	\9 -> { octave_off_action.(0) },
+	\11 -> { octave_off_action.(1) },
+	\10 -> { octave_off_action.(2) },
+]);
+
+{
+	SerialPort.closeAll;
+	1.0.wait;
+	port = SerialPort.devices[0];
+	("Connecting to " + port).postln;
+	p = SerialPort(
+		port,
+		baudrate: 115200,
+		crtscts: true);
+
+	~readLoop = fork {
+		var byte, str, capLPF = 0, timeScale = 0, sensors = nil;
+		loop{|i|
+			if(p.read==10, { var amp, knob, capValue, dustAmp = 0.0, functionCallAmp = 0.0, valueWidth;
+				str = "";
+				while({byte = p.read; byte !=13 }, {
+					str= str++byte.asAscii;
+				});
+				sensors = str.split($ );
+
+				sensors.do{ |sensor, i|
+					if(sensor.asInt > thresh, {
+						// sensors is on
+						on_actions.at(i.asSymbol).();
+					}, {
+						// sensor is off
+						off_actions.at(i.asSymbol).();
+					});
+				};
+
+				~note = ~calculateBinaryNumber.();
+				~updateNote.();
+
+			});
+		};
+
+	};
+}.fork;
+)

@@ -2,15 +2,13 @@ class Note {
   int note;
   ArrayList<Grip> grips;
   
-  Note(int n, int wrap, int maxNum) {
+  Note(int n) {
     grips = new ArrayList<Grip>();
     note = n;
-    int numWraps = 0;
-    while(((numWraps+1) * wrap) + n <= maxNum) numWraps++;
-    for(int i = 0; i < numWraps+1; i++) {
-      Grip g = new Grip((i * wrap) + n);
-      grips.add(g);
-    }
+  }
+  
+  void addGrip(Grip newGrip) {
+    grips.add(newGrip);
   }
   
   Grip getClosestGrip(Grip compGrip) {
